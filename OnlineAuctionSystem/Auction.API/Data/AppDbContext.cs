@@ -1,9 +1,18 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
-public class AppDbContext : IdentityDbContext<User>
-{
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+// Alias your model types to avoid any namespace/type name collisions
+using AppUser     = AuctionApp.Models.User;
+using AuctionItem = AuctionApp.Models.Auction;
+using BidItem     = AuctionApp.Models.Bid;
 
-    // Future DbSets (e.g. Auctions, Bids) will go here
+namespace Auction.API.Data
+{
+    public class AppDbContext : IdentityDbContext<AppUser>
+    {
+        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+        public DbSet<AuctionItem> Auctions { get; set; } = default!;
+        public DbSet<BidItem> Bids { get; set; } = default!;
+    }
 }

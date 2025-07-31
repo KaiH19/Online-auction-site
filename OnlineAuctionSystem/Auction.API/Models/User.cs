@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Identity;
 
-public class User : IdentityUser
+namespace AuctionApp.Models
 {
-    // Add extra properties if needed
+    public class User : IdentityUser
+    {
+        // Add extra properties if needed
+    }
 }
