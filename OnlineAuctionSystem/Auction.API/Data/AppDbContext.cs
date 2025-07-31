@@ -12,7 +12,13 @@ namespace Auction.API.Data
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+        protected override void OnModelCreating(ModelBuilder builder)
+        {
+            base.OnModelCreating(builder);
+        }
+
         public DbSet<AuctionItem> Auctions { get; set; } = default!;
         public DbSet<BidItem> Bids { get; set; } = default!;
     }
+
 }
