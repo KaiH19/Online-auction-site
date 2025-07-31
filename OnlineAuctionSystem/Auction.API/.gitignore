@@ -1,0 +1,25 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+*.cache
+*.log
+*.runtimeconfig.json
+*.deps.json
+*.nuget.*
+project.assets.json
+project.nuget.cache
+
+# User-specific
+.vs/
+*.user
+*.suo
+
+# Others
+.env
+node_modules/
+dist/
+
+
