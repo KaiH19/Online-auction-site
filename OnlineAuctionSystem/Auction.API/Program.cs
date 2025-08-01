@@ -13,11 +13,28 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Background worker to auto-finalize auctions
 builder.Services.AddHostedService<Auction.API.Services.AutoFinalizeAuctionsService>();
 
 // Identity (User + Role)
 builder.Services.AddIdentity<User, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>();
+
+// -------- CORS (allow Vue dev server on 5173) --------
+const string AllowDev = "_allowDev";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(name: AllowDev, policy =>
+    {
+        policy.WithOrigins(
+                "http://localhost:5173",
+                "https://localhost:5173"
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+// -----------------------------------------------------
 
 // Authentication (JWT Bearer)
 builder.Services.AddAuthentication(options =>
@@ -27,16 +44,21 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    var jwtSettings = builder.Configuration.GetSection("Jwt");
+    var jwtSection = builder.Configuration.GetSection("Jwt");
+
+    var key = jwtSection["Key"];
+    if (string.IsNullOrWhiteSpace(key))
+        throw new InvalidOperationException("JWT:Key is missing. Add it to appsettings.json or user secrets.");
+
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer           = true,
         ValidateAudience         = true,
         ValidateLifetime         = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer              = jwtSettings["Issuer"],
-        ValidAudience            = jwtSettings["Audience"],
-        IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]))
+        ValidIssuer              = jwtSection["Issuer"],
+        ValidAudience            = jwtSection["Audience"],
+        IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key))
     };
 });
 
@@ -51,7 +73,7 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Online Auction System API with JWT Authentication"
     });
 
-    // JWT bearer authentication setup
+    // JWT bearer authentication in Swagger UI
     var jwtSecurityScheme = new OpenApiSecurityScheme
     {
         Scheme = "bearer",
@@ -73,10 +95,13 @@ builder.Services.AddSwaggerGen(options =>
         { jwtSecurityScheme, Array.Empty<string>() }
     });
 
-    // Enable XML comments
+    // Enable XML comments (make sure XML docs are enabled in the .csproj)
     var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    options.IncludeXmlComments(xmlPath);
+    if (File.Exists(xmlPath))
+    {
+        options.IncludeXmlComments(xmlPath);
+    }
 });
 
 builder.Services.AddControllers();
@@ -111,9 +136,13 @@ using (var scope = app.Services.CreateScope())
 app.UseSwagger();
 app.UseSwaggerUI();
 
+// CORS must be before auth/authorization
+app.UseCors(AllowDev);
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
 app.Run();
+
