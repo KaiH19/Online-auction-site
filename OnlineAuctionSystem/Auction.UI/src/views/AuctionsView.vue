@@ -53,7 +53,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import Countdown from '@/components/Countdown.vue';
 import type { AuctionDto } from '@/types/auction';
 
-// ✅ Real-time helpers (make sure you added src/realtime/signalr.ts)
+// Real-time helpers 
 import {
   getConnection,
   joinAuctionRoom,
@@ -62,7 +62,6 @@ import {
   onAuctionClosed,
 } from '@/realtime/signalr';
 
-// Configure your API base URL (via .env)
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:5030';
 
 const auctions = ref<AuctionDto[]>([]);
@@ -101,7 +100,7 @@ function formatCurrency(amount: number) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(amount);
 }
 
-// ---- Real-time handlers ----
+//Real-time handlers
 
 function applyBidUpdate(p: {
   auctionId: number;

@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
-// aliases to match your setup
 using AppUser     = AuctionApp.Models.User;
 using AuctionItem = AuctionApp.Models.Auction;
 using BidItem     = AuctionApp.Models.Bid;
@@ -17,10 +16,9 @@ namespace Auction.API.Data
             var db          = services.GetRequiredService<AppDbContext>();
             var userManager = services.GetRequiredService<UserManager<AppUser>>();
 
-            // Ensure DB is up to date
             await db.Database.MigrateAsync();
 
-            // ---- Users ----
+            //Users
             var seller = await userManager.FindByNameAsync("seller1");
             if (seller == null)
             {
@@ -45,7 +43,7 @@ namespace Auction.API.Data
                 await userManager.CreateAsync(bidder, "Bidder1!Pass");
             }
 
-            // ---- Auction & Bid ----
+            //Auction & Bid
             if (!await db.Auctions.AnyAsync())
             {
                 var auction = new AuctionItem

@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace Auction.API.Hubs
 {
-    [Authorize] // only authenticated users connect (you can relax if needed)
+    [Authorize] // only authenticated users connect
     public class BiddingHub : Hub
     {
         public static string GroupName(int auctionId) => $"auction-{auctionId}";

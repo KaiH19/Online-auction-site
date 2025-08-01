@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
-// Alias your model types to avoid any namespace/type name collisions
 using AppUser     = AuctionApp.Models.User;
 using AuctionItem = AuctionApp.Models.Auction;
 using BidItem     = AuctionApp.Models.Bid;

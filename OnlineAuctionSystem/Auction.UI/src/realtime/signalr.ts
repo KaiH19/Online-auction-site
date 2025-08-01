@@ -4,7 +4,7 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:5030';
 let connection: signalR.HubConnection | null = null;
 
 export function getToken(): string | null {
-  // Adjust to your auth storage (localStorage/session/cookie)
+  
   return localStorage.getItem('jwt'); 
 }
 
