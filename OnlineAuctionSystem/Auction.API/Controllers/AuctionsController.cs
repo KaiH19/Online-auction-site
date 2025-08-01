@@ -47,7 +47,7 @@ namespace Auction.API.Controllers
 
             var now = DateTime.UtcNow;
 
-            // Track expired auctions we finalize to broadcast after SaveChanges
+            // Track expired auctions to broadcast after persistence
             var closedToBroadcast = new List<(int AuctionId, decimal FinalPrice, string? WinnerEmail)>();
             bool changed = false;
 
@@ -61,11 +61,14 @@ namespace Auction.API.Controllers
                         .OrderByDescending(b => b.Amount)
                         .FirstOrDefault();
 
-                    auction.WinnerId = topBid?.BidderId;
-                    auction.CurrentPrice = topBid?.Amount ?? auction.StartPrice;
+                    // Ensure non-null final price
+                    var finalPrice = topBid?.Amount ?? auction.StartPrice;
+                    var winnerEmail = topBid?.Bidder?.Email ?? auction.Winner?.Email;
 
-                    var winnerEmail = topBid?.Bidder?.Email; // Winner nav may not be populated yet
-                    closedToBroadcast.Add((auction.Id, auction.CurrentPrice, winnerEmail));
+                    auction.WinnerId = topBid?.BidderId;
+                    auction.CurrentPrice = finalPrice;
+
+                    closedToBroadcast.Add((auction.Id, finalPrice, winnerEmail));
                     changed = true;
                 }
             }
@@ -120,20 +123,20 @@ namespace Auction.API.Controllers
                     .OrderByDescending(b => b.Amount)
                     .FirstOrDefault();
 
+                var finalPrice = topBid?.Amount ?? auction.StartPrice;
+                var winnerEmail = topBid?.Bidder?.Email ?? auction.Winner?.Email;
+
                 auction.WinnerId = topBid?.BidderId;
-                auction.CurrentPrice = topBid?.Amount ?? auction.StartPrice;
+                auction.CurrentPrice = finalPrice;
 
                 await _context.SaveChangesAsync();
-
-                var winnerEmail = topBid?.Bidder?.Email
-                    ?? auction.Winner?.Email;
 
                 await _hub.Clients
                     .Group(BiddingHub.GroupName(auction.Id))
                     .SendAsync("AuctionClosed", new AuctionClosedEvent
                     {
                         AuctionId = auction.Id,
-                        FinalPrice = auction.CurrentPrice,
+                        FinalPrice = finalPrice,
                         WinnerEmail = winnerEmail,
                         ClosedAt = DateTime.UtcNow.ToString("o")
                     });
@@ -234,13 +237,13 @@ namespace Auction.API.Controllers
                 auction.IsClosed = true;
                 await _context.SaveChangesAsync();
 
-                // Also notify clients it has closed (edge case)
+                // Notify clients it has closed (edge case)
                 await _hub.Clients
                     .Group(BiddingHub.GroupName(id))
                     .SendAsync("AuctionClosed", new AuctionClosedEvent
                     {
                         AuctionId = id,
-                        FinalPrice = auction.CurrentPrice,
+                        FinalPrice = auction.CurrentPrice ?? auction.StartPrice,
                         WinnerEmail = null,
                         ClosedAt = DateTime.UtcNow.ToString("o")
                     });
@@ -271,10 +274,8 @@ namespace Auction.API.Controllers
 
             await _context.SaveChangesAsync();
 
-            // Load bidder email if not included
             var bidderEmail = (await _context.Users.FindAsync(userId))?.Email ?? string.Empty;
 
-            // Broadcast BidPlaced to watchers of this auction
             await _hub.Clients
                 .Group(BiddingHub.GroupName(id))
                 .SendAsync("BidPlaced", new BidPlacedEvent
@@ -282,7 +283,7 @@ namespace Auction.API.Controllers
                     AuctionId = id,
                     BidId = bid.Id,
                     Amount = bid.Amount,
-                    CurrentPrice = auction.CurrentPrice,
+                    CurrentPrice = auction.CurrentPrice ?? auction.StartPrice,
                     BidderEmail = bidderEmail,
                     Timestamp = bid.Timestamp.ToUniversalTime().ToString("o")
                 });

@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using StackExchange.Redis;
 
 using Auction.API.Data;                 // AppDbContext
 using AuctionApp.Models;                // Identity User, entities
@@ -11,18 +12,18 @@ using Auction.API.Hubs;                 // BiddingHub
 
 var builder = WebApplication.CreateBuilder(args);
 
-// -------------------- DbContext (PostgreSQL) --------------------
+// DbContext (PostgreSQL) 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// -------------------- Background Hosted Service --------------------
+// Background Hosted Service 
 builder.Services.AddHostedService<Auction.API.Services.AutoFinalizeAuctionsService>();
 
-// -------------------- Identity (User + Role) --------------------
+//Identity (User + Role)
 builder.Services.AddIdentity<User, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>();
 
-// -------------------- CORS (Vue dev server & websockets) --------------------
+//CORS (Vue dev server & websockets)
 const string AllowDev = "_allowDev";
 builder.Services.AddCors(options =>
 {
@@ -38,7 +39,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-// -------------------- Authentication (JWT Bearer) --------------------
+//Authentication (JWT Bearer)
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -64,20 +65,19 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// -------------------- SignalR (+ optional Redis backplane) --------------------
+// SignalR 
 var signalRBuilder = builder.Services.AddSignalR();
 
-var redisConn = builder.Configuration.GetConnectionString("Redis"); // e.g., "localhost:6379"
+var redisConn = builder.Configuration.GetConnectionString("Redis"); 
 if (!string.IsNullOrWhiteSpace(redisConn))
 {
     signalRBuilder.AddStackExchangeRedis(redisConn, options =>
     {
-        // Optional: helps separate environments/channels
-        options.Configuration.ChannelPrefix = "auction";
+        options.Configuration.ChannelPrefix = new RedisChannel("auction", RedisChannel.PatternMode.Literal);
     });
 }
 
-// -------------------- Swagger w/ JWT support --------------------
+// Swagger w/ JWT support 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -121,7 +121,7 @@ builder.Services.AddControllers();
 
 var app = builder.Build();
 
-// -------------------- Seed roles & initial data --------------------
+// Seed roles & initial data 
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -145,7 +145,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// -------------------- Middleware pipeline --------------------
+// Middleware pipeline
 app.UseSwagger();
 app.UseSwaggerUI();
 
@@ -156,7 +156,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// -------------------- SignalR hubs --------------------
+// SignalR hubs
 app.MapHub<BiddingHub>("/hubs/bidding");
 
 app.Run();
