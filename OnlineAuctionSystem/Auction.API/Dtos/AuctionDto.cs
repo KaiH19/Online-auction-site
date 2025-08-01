@@ -1,21 +1,26 @@
-using System.ComponentModel.DataAnnotations;
+using System;
+using System.Collections.Generic;
 
 namespace AuctionApp.Models.DTOs
 {
     public class AuctionDto
     {
-        public int Id { get; set; }
-        public string Title { get; set; }
-        public string? Description { get; set; }
-        public decimal StartPrice { get; set; }
-        public decimal? CurrentPrice { get; set; }
-        public DateTime StartTime { get; set; }
-        public DateTime EndTime { get; set; }
-        public bool IsClosed { get; set; }
+        public int Id { get; init; }
 
-        public string SellerEmail { get; set; }
-        public string? WinnerEmail { get; set; }
+        public string Title { get; init; } = string.Empty;
+        public string? Description { get; init; }
+        public DateTime StartTime { get; init; }
+        public DateTime EndTime { get; init; }
 
-        public List<BidDto> Bids { get; set; }
+        public decimal StartPrice { get; init; }        // <-- required by controller
+        public decimal CurrentPrice { get; init; }      // <-- required by controller
+        public bool IsClosed { get; init; }             // <-- required by controller
+
+        public string SellerEmail { get; init; } = string.Empty;
+        public string? WinnerEmail { get; init; }       // <-- required by controller (nullable)
+
+        public List<BidDto> Bids { get; init; } = new(); // initialize collection
     }
 }
+
+

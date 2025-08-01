@@ -1,23 +1,25 @@
 using System.ComponentModel.DataAnnotations;
 
-public class RegisterDto
+namespace AuctionApp.Models.DTOs
 {
-    [Required]
-    [EmailAddress]
-    public string Email { get; set; }
+    public class RegisterDto
+    {
+        [Required, EmailAddress]
+        public required string Email { get; init; }
 
-    [Required]
-    [MinLength(6)]
-    public string Password { get; set; }
+        [Required, MinLength(6)]
+        public required string Password { get; init; }
 
-    public string? Role { get; set; } // "User" default
+        public string? Role { get; init; }
+    }
+
+    public class LoginDto
+    {
+        [Required, EmailAddress]
+        public required string Email { get; init; }
+
+        [Required]
+        public required string Password { get; init; }
+    }
 }
-public class LoginDto
-{
-    [Required]
-    [EmailAddress]
-    public string Email { get; set; }
 
-    [Required]
-    public string Password { get; set; }
-}

@@ -1,13 +1,16 @@
-using Auction.API.Data;
 using AuctionApp.Models;
 using AuctionApp.Models.DTOs;
+using Auction.API.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Linq;
 
-namespace AuctionApp.Controllers
+namespace Auction.API.Controllers
 {
+    using AuctionModel = AuctionApp.Models.Auction;
+
     [ApiController]
     [Route("api/[controller]")]
     public class AuctionsController : ControllerBase
@@ -22,6 +25,7 @@ namespace AuctionApp.Controllers
         /// <summary>
         /// Get all auctions with related bids, seller and winner info.
         /// </summary>
+        /// <returns>List of auction DTOs.</returns>
         [HttpGet]
         [ProducesResponseType(typeof(List<AuctionDto>), 200)]
         public async Task<IActionResult> GetAll()
@@ -32,18 +36,18 @@ namespace AuctionApp.Controllers
                 .Include(a => a.Winner)
                 .ToListAsync();
 
-            // Auto-close expired
-            bool changesMade = false;
+            bool changed = false;
             foreach (var auction in auctions)
             {
                 if (!auction.IsClosed && DateTime.UtcNow > auction.EndTime)
                 {
                     auction.IsClosed = true;
-                    changesMade = true;
+                    changed = true;
                 }
             }
 
-            if (changesMade) await _context.SaveChangesAsync();
+            if (changed)
+                await _context.SaveChangesAsync();
 
             var result = auctions.Select(MapToDto).ToList();
             return Ok(result);
@@ -54,6 +58,7 @@ namespace AuctionApp.Controllers
         /// </summary>
         [HttpGet("{id}")]
         [ProducesResponseType(typeof(AuctionDto), 200)]
+        [ProducesResponseType(404)]
         public async Task<IActionResult> GetById(int id)
         {
             var auction = await _context.Auctions
@@ -75,11 +80,11 @@ namespace AuctionApp.Controllers
         }
 
         /// <summary>
-        /// Create a new auction (Admin/Seller only).
+        /// Create a new auction. Admin or Seller only.
         /// </summary>
         [HttpPost]
         [Authorize(Roles = "Admin,Seller")]
-        public async Task<IActionResult> CreateAuction([FromBody] Auction auction)
+        public async Task<IActionResult> CreateAuction([FromBody] AuctionModel auction)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -95,17 +100,18 @@ namespace AuctionApp.Controllers
         }
 
         /// <summary>
-        /// Update an existing auction (Admin or owner only, only if not started).
+        /// Update auction details. Only before auction starts.
         /// </summary>
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin,Seller")]
-        public async Task<IActionResult> UpdateAuction(int id, [FromBody] Auction updatedAuction)
+        public async Task<IActionResult> UpdateAuction(int id, [FromBody] AuctionModel updatedAuction)
         {
             var auction = await _context.Auctions.FindAsync(id);
             if (auction == null) return NotFound("Auction not found.");
 
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (auction.SellerId != userId && !User.IsInRole("Admin")) return Forbid();
+            if (auction.SellerId != userId && !User.IsInRole("Admin"))
+                return Forbid();
 
             if (DateTime.UtcNow >= auction.StartTime)
                 return BadRequest("Cannot update an auction after it has started.");
@@ -122,7 +128,7 @@ namespace AuctionApp.Controllers
         }
 
         /// <summary>
-        /// Delete an auction (Admin or owner only, only if no bids).
+        /// Delete an auction. Only if no bids placed.
         /// </summary>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin,Seller")]
@@ -135,7 +141,8 @@ namespace AuctionApp.Controllers
             if (auction == null) return NotFound("Auction not found.");
 
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (auction.SellerId != userId && !User.IsInRole("Admin")) return Forbid();
+            if (auction.SellerId != userId && !User.IsInRole("Admin"))
+                return Forbid();
 
             if (auction.Bids.Any())
                 return BadRequest("Cannot delete an auction that already has bids.");
@@ -147,7 +154,7 @@ namespace AuctionApp.Controllers
         }
 
         /// <summary>
-        /// Place a bid on a live auction (User only).
+        /// Place a bid on an open auction.
         /// </summary>
         [HttpPost("{id}/bids")]
         [Authorize]
@@ -167,6 +174,8 @@ namespace AuctionApp.Controllers
             }
 
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+
             if (auction.SellerId == userId)
                 return BadRequest("You cannot bid on your own auction.");
 
@@ -186,34 +195,65 @@ namespace AuctionApp.Controllers
             auction.WinnerId = userId;
 
             await _context.SaveChangesAsync();
+
+            // Optional: load the bidder email if it wasn't included
+            var bidderEmail = (await _context.Users.FindAsync(userId))?.Email ?? string.Empty;
+
             return Ok(new BidDto
             {
+                Id = bid.Id,
                 Amount = bid.Amount,
                 Timestamp = bid.Timestamp,
-                BidderEmail = (await _context.Users.FindAsync(userId))?.Email
+                BidderEmail = bidderEmail
             });
         }
 
-        private static AuctionDto MapToDto(Auction a)
+        /// <summary>
+        /// Map Auction entity to AuctionDto.
+        /// </summary>
+        private static AuctionDto MapToDto(AuctionModel a)
         {
+            if (a is null) throw new ArgumentNullException(nameof(a));
+
+            // Current price = latest bid by time, or StartPrice if none
+            var currentPrice = a.Bids
+                .OrderByDescending(b => b.Timestamp)
+                .Select(b => b.Amount)
+                .DefaultIfEmpty(a.StartPrice)
+                .First();
+
+            // Winner email: prefer Winner nav, else highest bid's bidder
+            var winnerEmail = a.Winner?.Email
+                ?? a.Bids
+                    .OrderByDescending(b => b.Amount)
+                    .Select(b => b.Bidder != null ? b.Bidder.Email : null)
+                    .FirstOrDefault();
+
             return new AuctionDto
             {
                 Id = a.Id,
                 Title = a.Title,
                 Description = a.Description,
-                StartPrice = a.StartPrice,
-                CurrentPrice = a.CurrentPrice,
                 StartTime = a.StartTime,
                 EndTime = a.EndTime,
-                IsClosed = a.IsClosed,
-                SellerEmail = a.Seller?.Email ?? "Unknown",
-                WinnerEmail = a.Winner?.Email,
-                Bids = a.Bids?.Select(b => new BidDto
-                {
-                    Amount = b.Amount,
-                    Timestamp = b.Timestamp,
-                    BidderEmail = b.Bidder?.Email ?? "Anonymous"
-                }).ToList() ?? new List<BidDto>()
+
+                StartPrice = a.StartPrice,
+                CurrentPrice = currentPrice,
+                IsClosed = a.IsClosed || DateTime.UtcNow >= a.EndTime,
+
+                SellerEmail = a.Seller?.Email ?? string.Empty,
+                WinnerEmail = winnerEmail,
+
+                Bids = a.Bids
+                    .OrderByDescending(b => b.Timestamp)
+                    .Select(b => new BidDto
+                    {
+                        Id = b.Id,
+                        Amount = b.Amount,
+                        Timestamp = b.Timestamp,
+                        BidderEmail = b.Bidder?.Email ?? string.Empty
+                    })
+                    .ToList()
             };
         }
     }

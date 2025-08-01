@@ -5,6 +5,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using AuctionApp.Models;
+using AuctionApp.Models.DTOs;
 using Auction.API.Data;
 
 [Route("api/[controller]")]
