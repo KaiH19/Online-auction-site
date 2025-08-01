@@ -1,6 +1,7 @@
 import * as signalR from '@microsoft/signalr';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:5030';
+const API_BASE = import.meta.env.VITE_API_BASE ?? "https://localhost:7058";
+
 let connection: signalR.HubConnection | null = null;
 
 export function getToken(): string | null {
@@ -14,7 +15,7 @@ export async function getConnection(): Promise<signalR.HubConnection> {
   }
 
   connection = new signalR.HubConnectionBuilder()
-    .withUrl(`${API_BASE}/hubs/bidding`, {
+    .withUrl(`${API_BASE}/Hubs/BiddingHub`, {
       accessTokenFactory: () => getToken() ?? "",
       transport: signalR.HttpTransportType.WebSockets,
       skipNegotiation: true

@@ -24,6 +24,7 @@ namespace AuctionApp.Models.DTOs
         // NEW: Countdown helpers for the client
         public int RemainingSeconds { get; init; }          // 0 when closed/past end
         public DateTime ServerTimeUtc { get; init; }        // lets client sync timers reliably
+        
     }
 }
 

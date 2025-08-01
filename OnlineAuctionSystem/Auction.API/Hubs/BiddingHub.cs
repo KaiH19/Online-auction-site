@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace Auction.API.Hubs
 {
-    [Authorize] // only authenticated users connect
+    //[Authorize] Left out for demo purposes; normally enabled for authenticated SignalR access
     public class BiddingHub : Hub
     {
         public static string GroupName(int auctionId) => $"auction-{auctionId}";

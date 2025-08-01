@@ -17,7 +17,7 @@ export interface AuctionDto {
   sellerEmail: string;
   winnerEmail?: string | null;
   bids: BidDto[];
-
+  _justUpdated?: boolean;
   // countdown helpers from API
   remainingSeconds: number;
   serverTimeUtc: string;   // ISO

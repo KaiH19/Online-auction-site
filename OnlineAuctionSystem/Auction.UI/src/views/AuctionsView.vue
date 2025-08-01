@@ -11,9 +11,14 @@
         :key="a.id"
         class="card"
         style="border: 1px solid #ddd; border-radius: 8px; padding: 1rem;"
+        :class="{ highlight: a._justUpdated }"
       >
         <header style="display:flex; justify-content: space-between; align-items: baseline;">
-          <h2 style="margin:0;">{{ a.title }}</h2>
+          <h2 style="margin:0;">
+            <router-link :to="`/auction/${a.id}`" style="text-decoration: none; color: inherit;">
+              {{ a.title }}
+            </router-link>
+          </h2>
           <small>Seller: {{ a.sellerEmail }}</small>
         </header>
 
@@ -90,17 +95,12 @@ async function load() {
 }
 
 function onExpire(id: number) {
-  // When a countdown hits 0, optionally refresh this auction or the list.
-  // For simplicity reload the list; the server will finalize if not already:
   load();
 }
 
 function formatCurrency(amount: number) {
-  // Adjust locale/currency to your preference
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(amount);
 }
-
-//Real-time handlers
 
 function applyBidUpdate(p: {
   auctionId: number;
@@ -113,16 +113,19 @@ function applyBidUpdate(p: {
   const a = auctions.value.find(x => x.id === p.auctionId);
   if (!a) return;
 
-  // Update current price
+  console.log('BidPlaced SignalR update:', p);
+
   a.currentPrice = p.currentPrice;
 
-  // Optionally update bids array if you’re displaying bids in this view
   a.bids.unshift({
     id: p.bidId,
     amount: p.amount,
     timestamp: p.timestamp,
     bidderEmail: p.bidderEmail,
   });
+
+  a._justUpdated = true;
+  setTimeout(() => a._justUpdated = false, 2000);
 }
 
 function applyClosedUpdate(p: {
@@ -141,16 +144,20 @@ function applyClosedUpdate(p: {
 
 onMounted(async () => {
   await load();
-
-  // Attach SignalR event listeners once (connection is awaited in load())
   onBidPlaced(applyBidUpdate);
   onAuctionClosed(applyClosedUpdate);
 });
 
 onUnmounted(async () => {
-  // Leave all joined rooms to keep the hub clean
   for (const a of auctions.value) {
     await leaveAuctionRoom(a.id);
   }
 });
 </script>
+
+<style scoped>
+.highlight {
+  background: #fffae6;
+  transition: background 1s ease;
+}
+</style>
