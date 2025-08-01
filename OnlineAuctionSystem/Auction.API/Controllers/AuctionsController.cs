@@ -1,9 +1,14 @@
 using AuctionApp.Models;
 using AuctionApp.Models.DTOs;
 using Auction.API.Data;
+using Auction.API.Hubs;
+using Auction.API.Realtime;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
+
 using System.Security.Claims;
 using System.Linq;
 using System.Collections.Generic;
@@ -17,15 +22,18 @@ namespace Auction.API.Controllers
     public class AuctionsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IHubContext<BiddingHub> _hub;
 
-        public AuctionsController(AppDbContext context)
+        public AuctionsController(AppDbContext context, IHubContext<BiddingHub> hub)
         {
             _context = context;
+            _hub = hub;
         }
 
         /// <summary>
         /// Get all auctions with related bids, seller and winner info.
-        /// Also finalizes auctions that have timed out (sets IsClosed, WinnerId, CurrentPrice).
+        /// Also finalizes auctions that have timed out (sets IsClosed, WinnerId, CurrentPrice),
+        /// then broadcasts AuctionClosed to subscribers.
         /// </summary>
         [HttpGet]
         [ProducesResponseType(typeof(List<AuctionDto>), 200)]
@@ -38,6 +46,9 @@ namespace Auction.API.Controllers
                 .ToListAsync();
 
             var now = DateTime.UtcNow;
+
+            // Track expired auctions we finalize to broadcast after SaveChanges
+            var closedToBroadcast = new List<(int AuctionId, decimal FinalPrice, string? WinnerEmail)>();
             bool changed = false;
 
             foreach (var auction in auctions)
@@ -46,7 +57,6 @@ namespace Auction.API.Controllers
                 {
                     auction.IsClosed = true;
 
-                    // Finalize winner & final price at timeout
                     var topBid = auction.Bids
                         .OrderByDescending(b => b.Amount)
                         .FirstOrDefault();
@@ -54,12 +64,30 @@ namespace Auction.API.Controllers
                     auction.WinnerId = topBid?.BidderId;
                     auction.CurrentPrice = topBid?.Amount ?? auction.StartPrice;
 
+                    var winnerEmail = topBid?.Bidder?.Email; // Winner nav may not be populated yet
+                    closedToBroadcast.Add((auction.Id, auction.CurrentPrice, winnerEmail));
                     changed = true;
                 }
             }
 
             if (changed)
+            {
                 await _context.SaveChangesAsync();
+
+                // Broadcast after persistence
+                foreach (var x in closedToBroadcast)
+                {
+                    await _hub.Clients
+                        .Group(BiddingHub.GroupName(x.AuctionId))
+                        .SendAsync("AuctionClosed", new AuctionClosedEvent
+                        {
+                            AuctionId = x.AuctionId,
+                            FinalPrice = x.FinalPrice,
+                            WinnerEmail = x.WinnerEmail,
+                            ClosedAt = DateTime.UtcNow.ToString("o")
+                        });
+                }
+            }
 
             var result = auctions.Select(MapToDto).ToList();
             return Ok(result);
@@ -67,7 +95,7 @@ namespace Auction.API.Controllers
 
         /// <summary>
         /// Get a specific auction by ID.
-        /// Also finalizes it if it has timed out.
+        /// Also finalizes it if it has timed out, then broadcasts AuctionClosed.
         /// </summary>
         [HttpGet("{id:int}")]
         [ProducesResponseType(typeof(AuctionDto), 200)]
@@ -96,6 +124,19 @@ namespace Auction.API.Controllers
                 auction.CurrentPrice = topBid?.Amount ?? auction.StartPrice;
 
                 await _context.SaveChangesAsync();
+
+                var winnerEmail = topBid?.Bidder?.Email
+                    ?? auction.Winner?.Email;
+
+                await _hub.Clients
+                    .Group(BiddingHub.GroupName(auction.Id))
+                    .SendAsync("AuctionClosed", new AuctionClosedEvent
+                    {
+                        AuctionId = auction.Id,
+                        FinalPrice = auction.CurrentPrice,
+                        WinnerEmail = winnerEmail,
+                        ClosedAt = DateTime.UtcNow.ToString("o")
+                    });
             }
 
             return Ok(MapToDto(auction));
@@ -176,7 +217,7 @@ namespace Auction.API.Controllers
         }
 
         /// <summary>
-        /// Place a bid on an open auction.
+        /// Place a bid on an open auction (broadcasts BidPlaced).
         /// </summary>
         [HttpPost("{id:int}/bids")]
         [Authorize]
@@ -192,6 +233,18 @@ namespace Auction.API.Controllers
             {
                 auction.IsClosed = true;
                 await _context.SaveChangesAsync();
+
+                // Also notify clients it has closed (edge case)
+                await _hub.Clients
+                    .Group(BiddingHub.GroupName(id))
+                    .SendAsync("AuctionClosed", new AuctionClosedEvent
+                    {
+                        AuctionId = id,
+                        FinalPrice = auction.CurrentPrice,
+                        WinnerEmail = null,
+                        ClosedAt = DateTime.UtcNow.ToString("o")
+                    });
+
                 return BadRequest("Auction is closed.");
             }
 
@@ -218,7 +271,21 @@ namespace Auction.API.Controllers
 
             await _context.SaveChangesAsync();
 
+            // Load bidder email if not included
             var bidderEmail = (await _context.Users.FindAsync(userId))?.Email ?? string.Empty;
+
+            // Broadcast BidPlaced to watchers of this auction
+            await _hub.Clients
+                .Group(BiddingHub.GroupName(id))
+                .SendAsync("BidPlaced", new BidPlacedEvent
+                {
+                    AuctionId = id,
+                    BidId = bid.Id,
+                    Amount = bid.Amount,
+                    CurrentPrice = auction.CurrentPrice,
+                    BidderEmail = bidderEmail,
+                    Timestamp = bid.Timestamp.ToUniversalTime().ToString("o")
+                });
 
             return Ok(new BidDto
             {
@@ -290,3 +357,4 @@ namespace Auction.API.Controllers
         }
     }
 }
+
