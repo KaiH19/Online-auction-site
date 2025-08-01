@@ -157,7 +157,7 @@ app.UseAuthorization();
 app.MapControllers();
 
 // SignalR hubs
-app.MapHub<BiddingHub>("/hubs/bidding");
+app.MapHub<BiddingHub>("/Hubs/BiddingHub");
 
 app.Run();
 
