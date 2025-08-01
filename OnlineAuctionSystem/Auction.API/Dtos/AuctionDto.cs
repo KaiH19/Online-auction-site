@@ -12,15 +12,18 @@ namespace AuctionApp.Models.DTOs
         public DateTime StartTime { get; init; }
         public DateTime EndTime { get; init; }
 
-        public decimal StartPrice { get; init; }        // <-- required by controller
-        public decimal CurrentPrice { get; init; }      // <-- required by controller
-        public bool IsClosed { get; init; }             // <-- required by controller
+        public decimal StartPrice { get; init; }
+        public decimal CurrentPrice { get; init; }
+        public bool IsClosed { get; init; }
 
         public string SellerEmail { get; init; } = string.Empty;
-        public string? WinnerEmail { get; init; }       // <-- required by controller (nullable)
+        public string? WinnerEmail { get; init; }
 
-        public List<BidDto> Bids { get; init; } = new(); // initialize collection
+        public List<BidDto> Bids { get; init; } = new();
+
+        // NEW: Countdown helpers for the client
+        public int RemainingSeconds { get; init; }          // 0 when closed/past end
+        public DateTime ServerTimeUtc { get; init; }        // lets client sync timers reliably
     }
 }
-
 

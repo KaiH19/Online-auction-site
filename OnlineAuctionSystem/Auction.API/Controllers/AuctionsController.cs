@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace Auction.API.Controllers
 {
@@ -24,8 +25,8 @@ namespace Auction.API.Controllers
 
         /// <summary>
         /// Get all auctions with related bids, seller and winner info.
+        /// Also finalizes auctions that have timed out (sets IsClosed, WinnerId, CurrentPrice).
         /// </summary>
-        /// <returns>List of auction DTOs.</returns>
         [HttpGet]
         [ProducesResponseType(typeof(List<AuctionDto>), 200)]
         public async Task<IActionResult> GetAll()
@@ -36,12 +37,23 @@ namespace Auction.API.Controllers
                 .Include(a => a.Winner)
                 .ToListAsync();
 
+            var now = DateTime.UtcNow;
             bool changed = false;
+
             foreach (var auction in auctions)
             {
-                if (!auction.IsClosed && DateTime.UtcNow > auction.EndTime)
+                if (!auction.IsClosed && now > auction.EndTime)
                 {
                     auction.IsClosed = true;
+
+                    // Finalize winner & final price at timeout
+                    var topBid = auction.Bids
+                        .OrderByDescending(b => b.Amount)
+                        .FirstOrDefault();
+
+                    auction.WinnerId = topBid?.BidderId;
+                    auction.CurrentPrice = topBid?.Amount ?? auction.StartPrice;
+
                     changed = true;
                 }
             }
@@ -55,8 +67,9 @@ namespace Auction.API.Controllers
 
         /// <summary>
         /// Get a specific auction by ID.
+        /// Also finalizes it if it has timed out.
         /// </summary>
-        [HttpGet("{id}")]
+        [HttpGet("{id:int}")]
         [ProducesResponseType(typeof(AuctionDto), 200)]
         [ProducesResponseType(404)]
         public async Task<IActionResult> GetById(int id)
@@ -70,9 +83,18 @@ namespace Auction.API.Controllers
             if (auction == null)
                 return NotFound("Auction not found.");
 
-            if (!auction.IsClosed && DateTime.UtcNow > auction.EndTime)
+            var now = DateTime.UtcNow;
+            if (!auction.IsClosed && now > auction.EndTime)
             {
                 auction.IsClosed = true;
+
+                var topBid = auction.Bids
+                    .OrderByDescending(b => b.Amount)
+                    .FirstOrDefault();
+
+                auction.WinnerId = topBid?.BidderId;
+                auction.CurrentPrice = topBid?.Amount ?? auction.StartPrice;
+
                 await _context.SaveChangesAsync();
             }
 
@@ -102,7 +124,7 @@ namespace Auction.API.Controllers
         /// <summary>
         /// Update auction details. Only before auction starts.
         /// </summary>
-        [HttpPut("{id}")]
+        [HttpPut("{id:int}")]
         [Authorize(Roles = "Admin,Seller")]
         public async Task<IActionResult> UpdateAuction(int id, [FromBody] AuctionModel updatedAuction)
         {
@@ -130,7 +152,7 @@ namespace Auction.API.Controllers
         /// <summary>
         /// Delete an auction. Only if no bids placed.
         /// </summary>
-        [HttpDelete("{id}")]
+        [HttpDelete("{id:int}")]
         [Authorize(Roles = "Admin,Seller")]
         public async Task<IActionResult> DeleteAuction(int id)
         {
@@ -156,7 +178,7 @@ namespace Auction.API.Controllers
         /// <summary>
         /// Place a bid on an open auction.
         /// </summary>
-        [HttpPost("{id}/bids")]
+        [HttpPost("{id:int}/bids")]
         [Authorize]
         public async Task<IActionResult> PlaceBid(int id, [FromBody] decimal amount)
         {
@@ -196,7 +218,6 @@ namespace Auction.API.Controllers
 
             await _context.SaveChangesAsync();
 
-            // Optional: load the bidder email if it wasn't included
             var bidderEmail = (await _context.Users.FindAsync(userId))?.Email ?? string.Empty;
 
             return Ok(new BidDto
@@ -209,11 +230,13 @@ namespace Auction.API.Controllers
         }
 
         /// <summary>
-        /// Map Auction entity to AuctionDto.
+        /// Map Auction entity to AuctionDto, including countdown helpers.
         /// </summary>
         private static AuctionDto MapToDto(AuctionModel a)
         {
             if (a is null) throw new ArgumentNullException(nameof(a));
+
+            var now = DateTime.UtcNow;
 
             // Current price = latest bid by time, or StartPrice if none
             var currentPrice = a.Bids
@@ -229,6 +252,11 @@ namespace Auction.API.Controllers
                     .Select(b => b.Bidder != null ? b.Bidder.Email : null)
                     .FirstOrDefault();
 
+            var isClosed = a.IsClosed || now >= a.EndTime;
+            var remainingSeconds = isClosed
+                ? 0
+                : Math.Max(0, (int)(a.EndTime - now).TotalSeconds);
+
             return new AuctionDto
             {
                 Id = a.Id,
@@ -239,7 +267,7 @@ namespace Auction.API.Controllers
 
                 StartPrice = a.StartPrice,
                 CurrentPrice = currentPrice,
-                IsClosed = a.IsClosed || DateTime.UtcNow >= a.EndTime,
+                IsClosed = isClosed,
 
                 SellerEmail = a.Seller?.Email ?? string.Empty,
                 WinnerEmail = winnerEmail,
@@ -253,7 +281,11 @@ namespace Auction.API.Controllers
                         Timestamp = b.Timestamp,
                         BidderEmail = b.Bidder?.Email ?? string.Empty
                     })
-                    .ToList()
+                    .ToList(),
+
+                // Countdown helpers
+                RemainingSeconds = remainingSeconds,
+                ServerTimeUtc = now
             };
         }
     }
