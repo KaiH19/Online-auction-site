@@ -18,6 +18,8 @@ namespace Auction.API.Data
 
         public DbSet<AuctionItem> Auctions { get; set; } = default!;
         public DbSet<BidItem> Bids { get; set; } = default!;
+        public DbSet<BidHistory> BidHistories { get; set; }
+
     }
 
 }
