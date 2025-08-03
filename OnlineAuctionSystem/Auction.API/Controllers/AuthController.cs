@@ -23,11 +23,6 @@ public class AuthController : ControllerBase
         _config = config;
     }
 
-    /// <summary>
-    /// Registers a new user and assigns a role.
-    /// </summary>
-    /// <param name="model">User registration data including email, password, and optional role.</param>
-    /// <returns>Success message or validation errors.</returns>
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterDto model)
     {
@@ -45,7 +40,6 @@ public class AuthController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(result.Errors);
 
-        // Default role: User
         string userRole = string.IsNullOrEmpty(model.Role) ? "User" : model.Role;
 
         if (!await _roleManager.RoleExistsAsync(userRole))
@@ -66,12 +60,11 @@ public class AuthController : ControllerBase
 
             var authClaims = new List<Claim>
             {
-                new Claim(ClaimTypes.Name, user.UserName),
-                new Claim(ClaimTypes.NameIdentifier, user.Id),
+                new Claim(ClaimTypes.Name, user.UserName ?? string.Empty),
+                new Claim(ClaimTypes.NameIdentifier, user.Id ?? string.Empty),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 
-            // Add role claims
             foreach (var role in userRoles)
             {
                 authClaims.Add(new Claim(ClaimTypes.Role, role));
@@ -93,7 +86,12 @@ public class AuthController : ControllerBase
     private JwtSecurityToken GetToken(List<Claim> authClaims)
     {
         var jwtSettings = _config.GetSection("Jwt");
-        var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
+
+        var key = jwtSettings["Key"];
+        if (string.IsNullOrEmpty(key))
+            throw new InvalidOperationException("JWT key is missing from configuration.");
+
+        var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
 
         return new JwtSecurityToken(
             issuer: jwtSettings["Issuer"],

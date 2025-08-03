@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Auction.API.Models;  // Add this to the top
+
 
 using AppUser     = AuctionApp.Models.User;
 using AuctionItem = AuctionApp.Models.Auction;

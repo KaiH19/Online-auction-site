@@ -77,7 +77,7 @@ if (!string.IsNullOrWhiteSpace(redisConn))
 {
     signalRBuilder.AddStackExchangeRedis(redisConn, options =>
     {
-        options.Configuration.ChannelPrefix = new RedisChannel("auction", RedisChannel.PatternMode.Literal);
+        options.Configuration.ChannelPrefix = RedisChannel.Literal("auction");
     });
 }
 
