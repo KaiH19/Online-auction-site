@@ -66,9 +66,13 @@ builder.Services.AddAuthentication(options =>
 });
 
 // SignalR 
-var signalRBuilder = builder.Services.AddSignalR();
+var signalRBuilder = builder.Services.AddSignalR()
+    .AddStackExchangeRedis("localhost:6379", options =>
+    {
+        options.Configuration.ChannelPrefix = "AuctionHub";
+    });
 
-var redisConn = builder.Configuration.GetConnectionString("Redis"); 
+var redisConn = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
 if (!string.IsNullOrWhiteSpace(redisConn))
 {
     signalRBuilder.AddStackExchangeRedis(redisConn, options =>
