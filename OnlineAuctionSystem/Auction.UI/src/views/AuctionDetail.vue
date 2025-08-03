@@ -15,25 +15,22 @@
       <button @click="placeBid">Place Bid</button>
     </div>
 
-    <ul>
-      <li v-for="b in bidHistory" :key="b.timestamp">
-        💰 {{ b.amount }} by {{ b.bidderEmail }} at {{ b.timestamp }}
-      </li>
-    </ul>
+    <BidHistory :auctionId="Number(id)" />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { getConnection, joinAuctionRoom, onBidPlaced } from '@/realtime/signalr'
 import axios from 'axios'
+
+import { getConnection, joinAuctionRoom, onBidPlaced } from '@/realtime/signalr'
+import BidHistory from '@/components/BidHistory.vue'
 
 const route = useRoute()
 const id = route.params.id
 const auction = ref(null)
 const bidAmount = ref(0)
-const bidHistory = ref([])
 
 onMounted(async () => {
   const res = await axios.get(`/api/auctions/${id}`)
@@ -41,10 +38,10 @@ onMounted(async () => {
   bidAmount.value = auction.value.currentPrice + 1
 
   joinAuctionRoom(id)
+
   onBidPlaced((payload) => {
     if (payload.auctionId === id) {
       auction.value.currentPrice = payload.amount
-      bidHistory.value.push(payload)
     }
   })
 })
