@@ -28,6 +28,12 @@ const router = createRouter({
       path: '/auction/:id',
       name: 'AuctionDetail',
       component: () => import('@/views/AuctionDetail.vue')
+    },
+    {
+      path: '/admin',
+      name: 'AdminDashboard',
+      component: () => import('../views/AdminDashboard.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true }
     }
   ],
 })

@@ -31,6 +31,9 @@ namespace AuctionApp.Models
         public User? Winner { get; set; }
 
         public List<Bid> Bids { get; set; } = new();
+        public string? WinnerEmail { get; set; }
+
+        public string? Status { get; set; } // e.g., "AwaitingPayment", "Paid", "NoBids"
     }
 }
 

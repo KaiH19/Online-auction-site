@@ -46,8 +46,6 @@ namespace Auction.API.Controllers
                 .ToListAsync();
 
             var now = DateTime.UtcNow;
-
-            // Track expired auctions to broadcast after persistence
             var closedToBroadcast = new List<(int AuctionId, decimal FinalPrice, string? WinnerEmail)>();
             bool changed = false;
 
@@ -61,14 +59,20 @@ namespace Auction.API.Controllers
                         .OrderByDescending(b => b.Amount)
                         .FirstOrDefault();
 
-                    // Ensure non-null final price
-                    var finalPrice = topBid?.Amount ?? auction.StartPrice;
-                    var winnerEmail = topBid?.Bidder?.Email ?? auction.Winner?.Email;
+                    if (topBid != null)
+                    {
+                        auction.WinnerId = topBid.BidderId;
+                        auction.WinnerEmail = topBid.Bidder?.Email;
+                        auction.CurrentPrice = topBid.Amount;
+                        auction.Status = "AwaitingPayment";
+                    }
+                    else
+                    {
+                        auction.CurrentPrice = auction.StartPrice;
+                        auction.Status = "NoBids";
+                    }
 
-                    auction.WinnerId = topBid?.BidderId;
-                    auction.CurrentPrice = finalPrice;
-
-                    closedToBroadcast.Add((auction.Id, finalPrice, winnerEmail));
+                    closedToBroadcast.Add((auction.Id, auction.CurrentPrice ?? auction.StartPrice, auction.WinnerEmail));
                     changed = true;
                 }
             }
@@ -77,7 +81,6 @@ namespace Auction.API.Controllers
             {
                 await _context.SaveChangesAsync();
 
-                // Broadcast after persistence
                 foreach (var x in closedToBroadcast)
                 {
                     await _hub.Clients
@@ -123,11 +126,18 @@ namespace Auction.API.Controllers
                     .OrderByDescending(b => b.Amount)
                     .FirstOrDefault();
 
-                var finalPrice = topBid?.Amount ?? auction.StartPrice;
-                var winnerEmail = topBid?.Bidder?.Email ?? auction.Winner?.Email;
-
-                auction.WinnerId = topBid?.BidderId;
-                auction.CurrentPrice = finalPrice;
+                if (topBid != null)
+                {
+                    auction.WinnerId = topBid.BidderId;
+                    auction.WinnerEmail = topBid.Bidder?.Email;
+                    auction.CurrentPrice = topBid.Amount;
+                    auction.Status = "AwaitingPayment";
+                }
+                else
+                {
+                    auction.CurrentPrice = auction.StartPrice;
+                    auction.Status = "NoBids";
+                }
 
                 await _context.SaveChangesAsync();
 
@@ -136,13 +146,44 @@ namespace Auction.API.Controllers
                     .SendAsync("AuctionClosed", new AuctionClosedEvent
                     {
                         AuctionId = auction.Id,
-                        FinalPrice = finalPrice,
-                        WinnerEmail = winnerEmail,
+                        FinalPrice = auction.CurrentPrice ?? auction.StartPrice,
+                        WinnerEmail = auction.WinnerEmail,
                         ClosedAt = DateTime.UtcNow.ToString("o")
                     });
             }
 
             return Ok(MapToDto(auction));
+        }
+
+        [HttpGet("admin-summary")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAdminSummary()
+        {
+            var auctions = await _context.Auctions
+                .Include(a => a.Bids)
+                .Include(a => a.Winner)
+                .ToListAsync();
+
+            var summary = new
+            {
+                TotalAuctions = auctions.Count,
+                CompletedAuctions = auctions.Count(a => a.IsClosed),
+                PaidAuctions = auctions.Count(a => a.Status == "Paid"),
+                AwaitingPayment = auctions.Count(a => a.Status == "AwaitingPayment"),
+                TotalBids = auctions.SelectMany(a => a.Bids).Count(),
+                TotalBidVolume = auctions.SelectMany(a => a.Bids).Sum(b => b.Amount),
+                Winners = auctions
+                    .Where(a => a.IsClosed && a.Winner != null)
+                    .Select(a => new {
+                        a.Id,
+                        a.Title,
+                        WinnerEmail = a.Winner.Email,
+                        FinalPrice = a.CurrentPrice
+                    })
+                    .ToList()
+            };
+
+            return Ok(summary);
         }
 
         /// <summary>
